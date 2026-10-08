@@ -1,0 +1,222 @@
+# يبني تطبيق «المذاكرات الإيمانية» بصيغة APK تلقائياً من ملف index.html
+# النتيجة تظهر في صفحة Releases بالمستودع جاهزة للتحميل
+name: بناء تطبيق أندرويد APK
+
+on:
+  push:
+    branches: [main, master]
+    paths: ['*.zip', 'index.html', 'icon-192.png', 'icon-512.png', '.github/workflows/build-apk.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: جلب ملفات المستودع
+        uses: actions/checkout@v4
+
+      - name: فك الملف المضغوط وترتيب المستودع
+        shell: bash
+        run: |
+          if ls *.zip >/dev/null 2>&1; then
+            # فك الملفات من الأقدم إلى الأحدث حتى تبقى النسخة الأحدث هي الأخيرة
+            for z in *.zip; do echo "$(git log -1 --format=%ct -- "$z") $z"; done | sort -n | cut -d' ' -f2- > /tmp/zips.txt
+            while IFS= read -r z; do echo "فك: $z"; unzip -o -q "$z" -d . && git rm -q "$z"; done < /tmp/zips.txt
+            rm -rf __MACOSX
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add -A
+            git commit -q -m "فك ملفات التطبيق وترتيبها [skip ci]" && git push origin "HEAD:${GITHUB_REF_NAME}" || true
+          fi
+          test -f index.html || { echo "لم يتم العثور على index.html"; exit 1; }
+
+      - name: تثبيت Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: تثبيت Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: إنشاء مشروع أندرويد
+        shell: bash
+        run: |
+          set -e
+          A=android/app/src/main
+          mkdir -p $A/java/com/mudhakarat/app $A/assets $A/res/values $A/res/mipmap-xxxhdpi
+          cp index.html $A/assets/index.html
+          echo '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' | base64 -d > android/app-key.jks
+
+          cat > android/settings.gradle <<'EOT'
+          pluginManagement { repositories { google(); mavenCentral(); gradlePluginPortal() } }
+          dependencyResolutionManagement { repositories { google(); mavenCentral() } }
+          rootProject.name = 'Almudhakarat'
+          include ':app'
+          EOT
+
+          cat > android/build.gradle <<'EOT'
+          plugins { id 'com.android.application' version '8.5.2' apply false }
+          EOT
+
+          cat > android/gradle.properties <<'EOT'
+          org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
+          android.useAndroidX=false
+          EOT
+
+          cat > android/app/build.gradle <<'EOT'
+          plugins { id 'com.android.application' }
+          def run = (System.getenv('GITHUB_RUN_NUMBER') ?: '1').toInteger()
+          android {
+              namespace 'com.mudhakarat.app'
+              compileSdk 34
+              defaultConfig {
+                  applicationId 'com.mudhakarat.app'
+                  minSdk 21
+                  targetSdk 34
+                  versionCode run
+                  versionName "1.${run}"
+              }
+              signingConfigs {
+                  release {
+                      storeFile file('../app-key.jks')
+                      storePassword 'mudhakarat'
+                      keyAlias 'mudhakarat'
+                      keyPassword 'mudhakarat'
+                  }
+              }
+              buildTypes {
+                  release { minifyEnabled false; signingConfig signingConfigs.release }
+              }
+              compileOptions {
+                  sourceCompatibility JavaVersion.VERSION_1_8
+                  targetCompatibility JavaVersion.VERSION_1_8
+              }
+              lint { checkReleaseBuilds false; abortOnError false }
+              aaptOptions { noCompress 'html' }
+          }
+          EOT
+
+          cat > $A/AndroidManifest.xml <<'EOT'
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+              <application
+                  android:label="@string/app_name"
+                  android:icon="@mipmap/ic_launcher"
+                  android:roundIcon="@mipmap/ic_launcher"
+                  android:allowBackup="true"
+                  android:supportsRtl="true"
+                  android:hardwareAccelerated="true"
+                  android:theme="@style/AppTheme">
+                  <activity
+                      android:name=".MainActivity"
+                      android:exported="true"
+                      android:screenOrientation="portrait"
+                      android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|uiMode">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.LAUNCHER" />
+                      </intent-filter>
+                  </activity>
+              </application>
+          </manifest>
+          EOT
+
+          cat > $A/res/values/strings.xml <<'EOT'
+          <?xml version="1.0" encoding="utf-8"?>
+          <resources><string name="app_name">المذاكرات الإيمانية</string></resources>
+          EOT
+
+          cat > $A/res/values/styles.xml <<'EOT'
+          <?xml version="1.0" encoding="utf-8"?>
+          <resources>
+              <style name="AppTheme" parent="android:Theme.Material.NoActionBar">
+                  <item name="android:windowBackground">@color/bg</item>
+                  <item name="android:statusBarColor">@color/bg</item>
+                  <item name="android:navigationBarColor">@color/bg</item>
+              </style>
+              <color name="bg">#1F4D3A</color>
+          </resources>
+          EOT
+
+          cat > $A/java/com/mudhakarat/app/MainActivity.java <<'EOT'
+          package com.mudhakarat.app;
+
+          import android.app.Activity;
+          import android.content.Intent;
+          import android.os.Bundle;
+          import android.webkit.WebResourceRequest;
+          import android.webkit.WebSettings;
+          import android.webkit.WebView;
+          import android.webkit.WebViewClient;
+
+          public class MainActivity extends Activity {
+              private WebView web;
+
+              @Override
+              protected void onCreate(Bundle state) {
+                  super.onCreate(state);
+                  web = new WebView(this);
+                  web.setBackgroundColor(0xFF1F4D3A);
+                  setContentView(web);
+                  WebSettings s = web.getSettings();
+                  s.setJavaScriptEnabled(true);
+                  s.setDomStorageEnabled(true);
+                  s.setAllowFileAccess(true);
+                  s.setTextZoom(100);
+                  web.setWebViewClient(new WebViewClient() {
+                      @Override
+                      public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest r) {
+                          if ("file".equals(r.getUrl().getScheme())) return false;
+                          try { startActivity(new Intent(Intent.ACTION_VIEW, r.getUrl())); } catch (Exception e) { }
+                          return true;
+                      }
+                  });
+                  if (state != null) web.restoreState(state);
+                  else web.loadUrl("file:///android_asset/index.html");
+              }
+
+              @Override
+              protected void onSaveInstanceState(Bundle out) {
+                  super.onSaveInstanceState(out);
+                  web.saveState(out);
+              }
+
+              @Override
+              public void onBackPressed() {
+                  web.evaluateJavascript("(window.appBack&&window.appBack())?'1':'0'", v -> {
+                      if (v == null || !v.contains("1")) finish();
+                  });
+              }
+          }
+          EOT
+
+          if [ -f icon-192.png ]; then cp icon-192.png $A/res/mipmap-xxxhdpi/ic_launcher.png
+          elif [ -f icon-512.png ]; then cp icon-512.png $A/res/mipmap-xxxhdpi/ic_launcher.png
+          else sed -i 's#@mipmap/ic_launcher#@android:drawable/sym_def_app_icon#g' $A/AndroidManifest.xml; fi
+
+      - name: بناء ملف APK
+        working-directory: android
+        run: gradle assembleRelease --no-daemon --stacktrace
+
+      - name: تجهيز الملف
+        run: cp android/app/build/outputs/apk/release/app-release.apk Almudhakarat.apk
+
+      - name: حفظ نسخة في صفحة التشغيل
+        uses: actions/upload-artifact@v4
+        with:
+          name: Almudhakarat-apk
+          path: Almudhakarat.apk
+
+      - name: نشر الملف في صفحة الإصدارات
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.${{ github.run_number }}
+          name: المذاكرات الإيمانية 1.${{ github.run_number }}
+          body: ملف تثبيت تطبيق «المذاكرات الإيمانية» لأجهزة أندرويد. نزّل ملف Almudhakarat.apk وافتحه على جوالك لتثبيته.
+          files: Almudhakarat.apk
